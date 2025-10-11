@@ -1,0 +1,232 @@
+name: Build and Release AppleScript Apps
+
+on:
+  push:
+    paths:
+      - '*.applescript'
+      - '*.version'
+      - 'scripts/build-all.sh'
+      - '.github/workflows/release.yml'
+    branches:
+      - main
+
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  detect-changes:
+    name: Detect Changed Scripts
+    runs-on: ubuntu-latest
+    outputs:
+      changed_scripts: ${{ steps.changes.outputs.scripts }}
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need previous commit to compare
+
+      - name: Detect changed scripts
+        id: changes
+        run: |
+          echo "Detecting changed .applescript or .version files..."
+
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep -E '\.(applescript|version)$' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No .applescript or .version files changed"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "scripts=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Extract base names of changed scripts
+          SCRIPTS=$(echo "$CHANGED_FILES" | sed 's/\.(applescript|version)$//' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "Changed scripts: $SCRIPTS"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "scripts=$SCRIPTS" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build Apps
+    runs-on: macos-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build all apps
+        run: |
+          chmod +x scripts/build-all.sh
+          scripts/build-all.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-apps
+          path: build/*.zip
+          retention-days: 90
+
+  release:
+    name: Create GitHub Releases
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build]
+    if: needs.detect-changes.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        script: ${{ fromJson(needs.detect-changes.outputs.changed_scripts) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-apps
+          path: build
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(cat ${{ matrix.script }}.version | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          SCRIPT_NAME="${{ matrix.script }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Convert to Title Case for display
+          APP_NAME=$(echo "$SCRIPT_NAME" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2));}1')
+
+          # Get commits since last release for this script
+          LAST_TAG="${SCRIPT_NAME}-v*"
+          COMMITS=$(git log --oneline --grep="$SCRIPT_NAME" HEAD~10..HEAD || echo "Initial release")
+
+          cat > release_notes.md << EOF
+          # $APP_NAME v${VERSION}
+
+          ## 📦 Download
+
+          Download the ready-to-use macOS application below.
+
+          ## 🚀 Installation
+
+          1. Download the \`.zip\` file
+          2. Unzip it
+          3. Move the \`.app\` to your Applications folder
+          4. Right-click and select "Open" on first launch (to bypass Gatekeeper)
+
+          ## 📝 What's Changed
+
+          $COMMITS
+
+          ## 📚 Documentation
+
+          See [\`${SCRIPT_NAME}.md\`](https://github.com/${{ github.repository }}/blob/main/${SCRIPT_NAME}.md) for full documentation.
+
+          ---
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/commits/${SCRIPT_NAME}-v${VERSION}
+          EOF
+
+          cat release_notes.md
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ matrix.script }}-v${{ steps.version.outputs.version }}
+          name: ${{ matrix.script }} v${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          files: build/${{ matrix.script }}-v${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-combined:
+    name: Create Combined Release
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build]
+    if: needs.detect-changes.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-apps
+          path: build
+
+      - name: Generate release date tag
+        id: date
+        run: |
+          DATE_TAG=$(date +'%Y.%m.%d')
+          echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
+          echo "Date tag: $DATE_TAG"
+
+      - name: Generate combined release notes
+        id: notes
+        run: |
+          DATE_TAG="${{ steps.date.outputs.date_tag }}"
+
+          cat > release_notes.md << EOF
+          # macOS AppleScript Apps - Combined Release ${DATE_TAG}
+
+          ## 📦 What's Included
+
+          This combined release includes all available macOS AppleScript applications:
+
+          EOF
+
+          # List all scripts with versions
+          for version_file in *.version; do
+            if [ -f "$version_file" ]; then
+              script_name=$(basename "$version_file" .version)
+              version=$(cat "$version_file" | tr -d '[:space:]')
+              app_name=$(echo "$script_name" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2));}1')
+              echo "- **${app_name}** v${version}" >> release_notes.md
+            fi
+          done
+
+          cat >> release_notes.md << EOF
+
+          ## 🚀 Installation
+
+          1. Download \`macos-apple-scripts-all.zip\`
+          2. Unzip it to access all applications
+          3. Move the \`.app\` files to your Applications folder
+          4. Right-click and select "Open" on first launch (to bypass Gatekeeper)
+
+          ## 📚 Documentation
+
+          See individual \`.md\` files in the repository for detailed documentation.
+
+          ---
+
+          **Repository**: https://github.com/${{ github.repository }}
+          EOF
+
+          cat release_notes.md
+
+      - name: Create or update combined release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: all-v${{ steps.date.outputs.date_tag }}
+          name: All Apps - ${{ steps.date.outputs.date_tag }}
+          body_path: release_notes.md
+          files: build/macos-apple-scripts-all.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
