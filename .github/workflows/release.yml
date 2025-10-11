@@ -31,6 +31,16 @@ jobs:
       - name: Detect changed scripts
         id: changes
         run: |
+          # If manually triggered, release all scripts
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger detected - processing all scripts"
+            ALL_SCRIPTS=$(find . -maxdepth 1 -name "*.version" -type f | sed 's|^\./||' | sed -E 's/\.version$//' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "All scripts: $ALL_SCRIPTS"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "scripts=$ALL_SCRIPTS" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           echo "Detecting changed .applescript or .version files..."
 
           # Get list of changed files
