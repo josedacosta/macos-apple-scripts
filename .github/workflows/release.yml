@@ -47,7 +47,7 @@ jobs:
           echo "$CHANGED_FILES"
 
           # Extract base names of changed scripts
-          SCRIPTS=$(echo "$CHANGED_FILES" | sed 's/\.(applescript|version)$//' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          SCRIPTS=$(echo "$CHANGED_FILES" | sed -E 's/\.(applescript|version)$//' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           echo "Changed scripts: $SCRIPTS"
           echo "has_changes=true" >> $GITHUB_OUTPUT
