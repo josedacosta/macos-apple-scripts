@@ -4,9 +4,10 @@ An AppleScript that detects and helps you close duplicate Chrome windows (window
 
 ## Features
 
-- 📋 Lists all open Chrome windows and their tabs
-- 🔍 Detects windows with identical tabs (same URLs, same order)
+- 🔍 Detects Chrome windows with identical tabs (same URLs, same order)
+- 👁️ Focus on duplicate windows to inspect them before deciding
 - 🗑️ Interactive prompts to close duplicate windows via native macOS dialogs
+- ⏭️ Skip duplicates you want to keep
 - 🎯 Uses AppleScript to control Chrome directly (no external dependencies)
 - 🍎 Native macOS integration with notifications
 
@@ -67,9 +68,11 @@ The script analyzes all Chrome windows and shows you:
 ### Step 3: Duplicate Detection
 
 If duplicates are found, for each duplicate pair:
-- Shows both the original and duplicate window side-by-side
-- Asks if you want to close the duplicate
-- Closes the window if you confirm
+- Shows both windows with their tab details (first 6 tabs)
+- Presents three options: "Skip", "Focus", or "Close"
+- **Focus**: Brings the selected window to the front for inspection
+- **Close**: Allows choosing which window to close
+- **Skip**: Moves to the next duplicate pair
 
 ### Step 4: Completion
 
@@ -82,50 +85,49 @@ Shows a summary of how many duplicates were processed.
 osascript chrome-duplicate-detector.applescript
 ```
 
-2. **Welcome dialog appears** → Click "Start"
+2. **Startup dialog** → Click "Start"
 
-3. **All windows listed**:
+3. **Analysis notification**: "Analyzing Chrome windows, please wait..."
+
+4. **If identical windows found**, dialog shows:
 ```
-✅ Found 3 Chrome window(s)
+🔄 Identical windows detected!
 
-📋 Window 1:
-   2 tab(s):
-   1. GitHub - username/example-repository
-      https://github.com/username/example-repository
-   2. Example Search Engine
-      https://www.example.com
+Window 1 is identical to Window 2
 
-📋 Window 2:
-   2 tab(s):
-   1. Example Search Engine
-      https://www.example.com
-   2. GitHub - username/example-repository
-      https://github.com/username/example-repository
+Number of tabs: 3
 
-📋 Window 3:
-   1 tab(s):
-   1. Documentation Site
-      https://docs.example.org
-```
+════════════════════
+📋 Window 1 tabs:
+  1. Example Documentation Site
+  2. Sample Code Repository
+  3. Test Environment Dashboard
+  ... and 2 more tab(s)
 
-4. **Duplicate detected** → Dialog shows:
-```
-🔁 Duplicate Set 1 of 1
+════════════════════
+📋 Window 2 tabs:
+  1. Example Documentation Site
+  2. Sample Code Repository
+  3. Test Environment Dashboard
+  ... and 2 more tab(s)
 
-Original:
-📋 Window 1: ...
-
-⬇️  IS IDENTICAL TO  ⬇️
-
-Duplicate:
-📋 Window 2: ...
+════════════════════
 ```
 
-5. **Choose action**: Click "Close Duplicate" or "Skip"
+5. **Choose action**: Three buttons appear:
+   - **Skip**: Continue to next duplicate
+   - **Focus**: Select which window to bring to front
+   - **Close**: Select which window to close
 
-6. **Notification**: "Window 2 closed" (if you chose to close)
+6. **If you click "Focus"**: Choose between "Focus Window 1" or "Focus Window 2"
+   - Notification: "Window X focused"
 
-7. **Done**: "✨ Done! Processed 1 duplicate(s)."
+7. **If you click "Close"**: Choose between "Close Window 1" or "Close Window 2"
+   - Notification: "Window X closed"
+
+8. **Process continues** for each duplicate pair
+
+9. **Final dialog**: "✅ Done! No more identical windows."
 
 ## Technical Details
 
@@ -209,7 +211,7 @@ You can manage these permissions in:
 - Only works on **macOS** (AppleScript is macOS-only)
 - Only works with **Google Chrome** (not Chromium, Edge, etc.)
 - Requires Chrome to be running
-- Tab order doesn't matter (by design - this is a feature!)
+- Tab order **matters** - windows must have identical tabs in the same order to be considered duplicates
 
 ## Creating a Keyboard Shortcut
 
@@ -247,11 +249,3 @@ Then:
 chmod +x ~/bin/chrome-duplicates
 chrome-duplicates
 ```
-
-## Author
-
-Created by John Smith for personal use.
-
-## License
-
-MIT
