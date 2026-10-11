@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ---
 
@@ -17,7 +17,6 @@
 - **NEVER delete the file `.git/info/exclude`** - This file must be preserved at all times
 - **NEVER commit the following files/folders** - They must remain local only:
   - `jose/` (personal workspace)
-  - `CLAUDE.md` (project instructions)
   - `.idea/` (IDE configuration)
 
 ```bash
